@@ -13,15 +13,41 @@ router.post("/order", async (req, res) => {
     const order = {
         orderId: uuid(),
         product: req.body.product,
-        status: "CREATED"
+        status: "CREATED",
     };
 
     await db.collection("orders").insertOne(order);
 
-    const value = await redis.set(order.orderId, "CREATED");
-    console.log("redis verify:", value);
+    // Redis initial state
+    await redis.set(`order:${order.orderId}`, "CREATED");
 
-    await send("order-created", order);
+    await send(
+        "order-created",
+        order,
+        order.orderId // partition key
+    );
+
+    res.json(order);
+});
+
+router.get("/orders", async (req, res) => {
+    const db = await connectMongo();
+
+    const orders = await db
+        .collection("orders")
+        .find({})
+        .sort({ _id: -1 })
+        .toArray();
+
+    res.json(orders);
+});
+
+router.get("/order/:id", async (req, res) => {
+    const db = await connectMongo();
+
+    const order = await db.collection("orders").findOne({
+        orderId: req.params.id,
+    });
 
     res.json(order);
 });

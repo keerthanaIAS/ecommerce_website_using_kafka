@@ -14,7 +14,7 @@ app.use(express.json());
 
 app.use(orderRoutes);
 
-app.listen(3000, () => {
+app.listen(3001, () => {
     console.log("server running");
 });
 

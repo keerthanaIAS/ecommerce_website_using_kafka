@@ -2,30 +2,52 @@ const kafka = require("../shared/kafka/client");
 const send = require("../shared/kafka/producer");
 
 const consumer = kafka.consumer({
-    groupId: "inventory-group"
+    groupId: "inventory-group",
 });
 
 async function start() {
     await consumer.connect();
 
-    await consumer.subscribe({
-        topic: "order-created"
+    await consumer.subscribe({ topic: "order-created" });
+
+    await consumer.run({
+        autoCommit: false,
+
+        eachMessage: async ({ message, heartbeat, commitOffsetsIfNecessary }) => {
+            const order = JSON.parse(message.value.toString());
+            console.log("processing:", order.orderId);
+            await new Promise(r => setTimeout(r, 2000));
+            await commitOffsetsIfNecessary();
+        }
     });
 
     await consumer.run({
         eachMessage: async ({ message }) => {
-            const order = JSON.parse(message.value);
+            const order = JSON.parse(message.value.toString());
 
-            console.log("inventory checking", order);
+            const retries = parseInt(message.headers?.retry || "0");
 
-            const success = Math.random() > 0.2;
+            console.log("inventory processing:", order.orderId);
+
+            const success = Math.random() > 0.3;
 
             if (success) {
-                await send("inventory-reserved", order);
+                await send("inventory-reserved", order, order.orderId);
             } else {
-                await send("inventory-failed", order);
+                if (retries < 3) {
+                    await send(
+                        "inventory-retry",
+                        order,
+                        order.orderId,
+                        {
+                            retry: Buffer.from(String(retries + 1)),
+                        }
+                    );
+                } else {
+                    await send("dead-letter-orders", order, order.orderId);
+                }
             }
-        }
+        },
     });
 }
 

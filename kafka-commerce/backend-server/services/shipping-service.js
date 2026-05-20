@@ -1,33 +1,41 @@
 const kafka = require("../shared/kafka/client");
 const connectMongo = require("../shared/db/mongo");
 const redis = require("../shared/redis/client");
+const send = require("../shared/kafka/producer");
 
 const consumer = kafka.consumer({
-    groupId: "shipping-group"
+    groupId: "shipping-group",
 });
 
 async function start() {
     await consumer.connect();
-
-    await consumer.subscribe({
-        topic: "payment-success"
-    });
+    await consumer.subscribe({ topic: "payment-success" });
 
     await consumer.run({
         eachMessage: async ({ message }) => {
-            const db = await connectMongo();
+            try {
+                const order = JSON.parse(message.value.toString());
 
-            const order = JSON.parse(message.value);
+                const db = await connectMongo();
 
-            await db.collection("orders").updateOne(
-                { orderId: order.orderId },
-                { $set: { status: "SHIPPED" } }
-            );
+                const already = await redis.get(`shipped:${order.orderId}`);
+                if (already) return;
 
-            await redis.set(order.orderId, "SHIPPED");
+                await db.collection("orders").updateOne(
+                    { orderId: order.orderId },
+                    { $set: { status: "SHIPPED" } }
+                );
 
-            console.log("shipping created", order);
-        }
+                await redis.set(`shipped:${order.orderId}`, "1");
+
+                await send("shipment-created", order, order.orderId);
+
+                console.log("shipped:", order.orderId);
+            } catch (err) {
+                console.error("shipping error:", err);
+                await send("dead-letter-orders", { error: err.message });
+            }
+        },
     });
 }
 
