@@ -7,6 +7,7 @@ const kafka = new Kafka({
 
 const topics = [
     { topic: "order-created", numPartitions: 4 },
+    { topic: "inventory-retry", numPartitions: 2 },
     { topic: "inventory-reserved", numPartitions: 2 },
     { topic: "inventory-failed", numPartitions: 2 },
     { topic: "payment-success", numPartitions: 2 },
@@ -17,15 +18,9 @@ const topics = [
 
 async function createTopics() {
     const admin = kafka.admin();
-
     await admin.connect();
-
-    await admin.createTopics({
-        topics
-    });
-
-    console.log("Topics created");
-
+    await admin.createTopics({ topics });
+    console.log("Topics created successfully");
     await admin.disconnect();
 }
 

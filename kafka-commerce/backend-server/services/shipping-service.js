@@ -1,7 +1,7 @@
 const kafka = require("../shared/kafka/client");
-const connectMongo = require("../shared/db/mongo");
+const { connectMongo } = require("../shared/db/mongo");
 const redis = require("../shared/redis/client");
-const send = require("../shared/kafka/producer");
+const { send } = require("../shared/kafka/producer");
 
 const consumer = kafka.consumer({
     groupId: "shipping-group",
@@ -9,13 +9,14 @@ const consumer = kafka.consumer({
 
 async function start() {
     await consumer.connect();
-    await consumer.subscribe({ topic: "payment-success" });
+    await consumer.subscribe({ topic: "payment-success", fromBeginning: true });
 
     await consumer.run({
-        eachMessage: async ({ message }) => {
+        autoCommit: false,
+        eachMessage: async ({ topic, partition, message }) => {
+            let order;
             try {
-                const order = JSON.parse(message.value.toString());
-
+                order = JSON.parse(message.value.toString());
                 const db = await connectMongo();
 
                 const already = await redis.get(`shipped:${order.orderId}`);
@@ -27,16 +28,24 @@ async function start() {
                 );
 
                 await redis.set(`shipped:${order.orderId}`, "1");
-
                 await send("shipment-created", order, order.orderId);
 
                 console.log("shipped:", order.orderId);
             } catch (err) {
                 console.error("shipping error:", err);
-                await send("dead-letter-orders", { error: err.message });
+                await send("dead-letter-orders", { 
+                    error: err.message, 
+                    payload: order || message.value.toString()
+                });
             }
+
+            // Manual commit checkpoint execution block
+            const nextOffset = (BigInt(message.offset) + 1n).toString();
+            await consumer.commitOffsets([{ topic, partition, offset: nextOffset }]);
         },
     });
+    
+    return consumer;
 }
 
 module.exports = start;

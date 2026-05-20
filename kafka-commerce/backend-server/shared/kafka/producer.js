@@ -1,6 +1,10 @@
 const kafka = require("./client");
 
-const producer = kafka.producer();
+const producer = kafka.producer({
+    idempotent: true, // Ensures exactly-once delivery semantics
+    maxInFlightRequests: 5
+});
+
 let isConnected = false;
 
 async function initProducer() {
@@ -17,7 +21,7 @@ async function send(topic, message, key = null, headers = {}) {
         topic,
         messages: [
             {
-                key, // partition control
+                key: key ? String(key) : null,
                 value: JSON.stringify(message),
                 headers,
             },
@@ -27,4 +31,13 @@ async function send(topic, message, key = null, headers = {}) {
     console.log(`sent → ${topic}`);
 }
 
-module.exports = send;
+// Clean connection termination hook
+async function disconnectProducer() {
+    if (isConnected) {
+        await producer.disconnect();
+        isConnected = false;
+        console.log("Kafka producer disconnected cleanly.");
+    }
+}
+
+module.exports = { send, disconnectProducer };
