@@ -1,0 +1,11 @@
+{
+  "name": "kafka-zookeeper-commerce",
+  "version": "1.0.0",
+  "main": "start.js",
+  "scripts": {
+    "start": "node start.js"
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4"
+  }
+}

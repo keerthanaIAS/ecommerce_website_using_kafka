@@ -92,3 +92,29 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
   --group inventory-group \
   --topic order-created \
   --reset-offsets --to-earliest --execute
+
+
+                    YOUR MAC (Host)
+                           |
+        ┌──────────────────┼──────────────────┐
+        |                  |                  |
+    localhost:9092     localhost:9093     localhost:9094
+        |                  |                  |
+        ▼                  ▼                  ▼
+    [Port 9092]        [Port 9093]        [Port 9094]
+        |                  |                  |
+    Docker Port Mapping    |                  |
+        |                  |                  |
+        ▼                  ▼                  ▼
+    [kafka1:9092]      [kafka2:9093]      [kafka3:9094]
+        |                  |                  |
+        |    INTERNAL DOCKER NETWORK          |
+        |                  |                  |
+        └──────────────────┼──────────────────┘
+                           |
+                    Brokers communicate
+                    on kafkaX:29092
+                           |
+                           ▼
+                    Kafka UI connects
+                    to kafkaX:29092
