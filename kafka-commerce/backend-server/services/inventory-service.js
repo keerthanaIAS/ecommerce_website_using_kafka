@@ -13,6 +13,14 @@ async function start() {
     await consumer.run({
         autoCommit: false, // Ensures accurate transaction control checkpoints
         eachMessage: async ({ topic, partition, message, heartbeat }) => {
+
+            console.log({
+                topic,
+                partition,
+                offset: message.offset,
+                key: message.key?.toString(),
+            });
+            
             const order = JSON.parse(message.value.toString());
             const retries = parseInt(message.headers?.retry?.toString() || "0");
 
@@ -23,12 +31,13 @@ async function start() {
                 await heartbeat();
 
                 // Randomized simulation engine window
-                const success = Math.random() > 0.3;
+                // const success = Math.random() > 0.3;
+                const success = true;
 
                 if (success) {
                     await send("inventory-reserved", order, order.orderId);
                 } else {
-                    if (retries < 3) {
+                    if (retries < 5) {
                         await send(
                             "inventory-retry",
                             order,
@@ -45,7 +54,7 @@ async function start() {
                     }
                 }
 
-                // Explicitly commit progress manually ONLY after success downstream routing paths confirm
+                // Explicitly commit progress manually only after success downstream routing paths confirm
                 const nextOffset = (BigInt(message.offset) + 1n).toString();
                 await consumer.commitOffsets([
                     { topic, partition, offset: nextOffset }

@@ -14,19 +14,57 @@ async function initProducer() {
     }
 }
 
+function getRetryPartition(retryCount) {
+    if (retryCount === 1) return 0;
+    if (retryCount === 2) return 1;
+    return 2;
+}
+
 async function send(topic, message, key = null, headers = {}) {
     await initProducer();
 
-    await producer.send({
+    const retry =
+        parseInt(headers.retry?.toString() || "0");
+
+    const kafkaMessage = {
+        key: key ? String(key) : null,
+        value: JSON.stringify(message),
+        headers
+    };
+
+    if (topic === "inventory-retry") {
+        kafkaMessage.partition =
+            getRetryPartition(retry);
+    }
+
+    const result = await producer.send({
         topic,
-        messages: [
-            {
-                key: key ? String(key) : null,
-                value: JSON.stringify(message),
-                headers,
-            },
-        ],
+        messages: [kafkaMessage]
     });
+
+    const partition = result[0].partition;
+
+    console.log("KAFKA SEND METADATA:", JSON.stringify(result, null, 2));
+
+    const admin = kafka.admin();
+    await admin.connect();
+
+    const meta = await admin.fetchTopicMetadata({ topics: [topic] });
+
+    console.log(JSON.stringify(meta, null, 2));
+
+    const leader = meta.topics[0].partitions.find(
+        p => p.partitionId === partition
+    )?.leader;
+
+    console.log({
+        topic,
+        partition,
+        leaderBroker: leader,
+        offset: result[0].baseOffset
+    });
+
+    await admin.disconnect();
 
     console.log(`sent → ${topic}`);
 }

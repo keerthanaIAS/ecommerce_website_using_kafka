@@ -1,6 +1,6 @@
-const redis = require("../shared/redis/client");
-const { closeMongo } = require("../shared/db/mongo");
-const { disconnectProducer } = require("../shared/kafka/producer");
+const redis = require("../redis/client");
+const { closeMongo } = require("../db/mongo");
+const { disconnectProducer } = require("../kafka/producer");
 
 const resources = {
     server: null,

@@ -14,6 +14,14 @@ async function start() {
     await consumer.run({
         autoCommit: false,
         eachMessage: async ({ topic, partition, message }) => {
+
+            console.log({
+                topic,
+                partition,
+                offset: message.offset,
+                key: message.key?.toString(),
+            });
+
             let order;
             try {
                 order = JSON.parse(message.value.toString());
@@ -33,8 +41,8 @@ async function start() {
                 console.log("shipped:", order.orderId);
             } catch (err) {
                 console.error("shipping error:", err);
-                await send("dead-letter-orders", { 
-                    error: err.message, 
+                await send("dead-letter-orders", {
+                    error: err.message,
                     payload: order || message.value.toString()
                 });
             }
@@ -44,7 +52,7 @@ async function start() {
             await consumer.commitOffsets([{ topic, partition, offset: nextOffset }]);
         },
     });
-    
+
     return consumer;
 }
 

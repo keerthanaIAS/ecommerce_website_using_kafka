@@ -19,9 +19,15 @@ const topics = [
 async function createTopics() {
     const admin = kafka.admin();
     await admin.connect();
-    await admin.createTopics({ topics });
+    await admin.createTopics({ 
+        topics,
+        waitForLeaders: true // Forces the code to wait until partitions are fully hosted
+    });
+    console.log("Topics synchronized on broker.");
     console.log("Topics created successfully");
     await admin.disconnect();
 }
 
 createTopics().catch(console.error);
+
+module.exports = { createTopics };

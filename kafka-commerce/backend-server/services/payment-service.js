@@ -6,34 +6,116 @@ const consumer = kafka.consumer({
     groupId: "payment-group",
 });
 
+let paused = false;
+let overloaded = false;
+
+setInterval(() => {
+    overloaded = Math.random() > 0.7;
+    console.log("SYSTEM OVERLOAD:", overloaded);
+}, 10000);
+
 async function start() {
     await consumer.connect();
-    await consumer.subscribe({ topic: "inventory-reserved", fromBeginning: true });
+    await consumer.subscribe({
+        topic: "inventory-reserved",
+        fromBeginning: true
+    });
 
     await consumer.run({
-        autoCommit: false, // Turned off to prevent early automatic tracking
-        eachMessage: async ({ topic, partition, message }) => {
-            const order = JSON.parse(message.value.toString());
+        autoCommit: false,
+        eachMessage: async ({
+            topic,
+            partition,
+            message
+        }) => {
+            console.log({
+                topic,
+                partition,
+                offset: message.offset,
+                paused
+            });
 
-            const processed = await redis.get(`processed:${order.orderId}`);
+            if (overloaded && !paused) {
+                paused = true;
+                console.log("PAUSING PAYMENT CONSUMER");
+                consumer.pause([{ topic }]);
+                setTimeout(async () => {
+                    console.log("RESUMING PAYMENT CONSUMER");
+                    consumer.resume([{ topic }]);
+                    // Now you explicitly told Kafka:
+                    // “Reset your internal fetch pointer back to offset 7.”
+
+                    // That changes Kafka’s state, not your JS state.
+
+                    // Then Kafka must do:
+                    // fetch offset 7 again
+                    // call eachMessage again.
+                    await consumer.seek({
+                        topic,
+                        partition,
+                        offset: message.offset
+                    });
+                    paused = false;
+                    overloaded = false;
+                }, 5000);
+                // message will be reprocessed after resume
+                return;
+            }
+            // after put seek it will call again eachmessages right? in that state using radmon it overflow may be false so it called shipping
+
+            const order = JSON.parse(
+                message.value.toString()
+            );
+
+            const processed = await redis.get(
+                `processed:${order.orderId}`
+            );
+
             if (processed) {
-                console.log(`Order ${order.orderId} already processed by payments. Skipping.`);
+                console.log(
+                    `Order ${order.orderId} already processed`
+                );
+                // only commit when already processed
+                const nextOffset = (BigInt(message.offset) + 1n).toString();
+                await consumer.commitOffsets([
+                    {
+                        topic,
+                        partition,
+                        offset: nextOffset
+                    }
+                ]);
                 return;
             }
 
-            const success = Math.random() > 0.2;
+            await new Promise(resolve =>
+                setTimeout(resolve, 2000)
+            );
 
-            if (success) {
-                await redis.set(`processed:${order.orderId}`, "1");
-                await send("payment-success", order, order.orderId);
-            } else {
-                await send("payment-failed", order, order.orderId);
-            }
+            await redis.set(
+                `processed:${order.orderId}`,
+                "1"
+            );
 
-            // Manual commit after routing logic satisfies completely
-            const nextOffset = (BigInt(message.offset) + 1n).toString();
-            await consumer.commitOffsets([{ topic, partition, offset: nextOffset }]);
-        },
+            await send(
+                "payment-success",
+                order,
+                order.orderId
+            );
+
+            const nextOffset =
+                (
+                    BigInt(message.offset) + 1n
+                ).toString();
+
+            // only commit after business work is done
+            await consumer.commitOffsets([
+                {
+                    topic,
+                    partition,
+                    offset: nextOffset
+                }
+            ]);
+        }
     });
 
     return consumer;

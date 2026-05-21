@@ -1,37 +1,35 @@
+// index.js
 const express = require("express");
 const cors = require("cors");
 
-// Routes
-const orderRoutes = require("./routes/orderRoutes");
+// Routes & Resource Utilities
+const orderRoutes = require("./services/order-service");
+const { registerServer, registerConsumer } = require("./shared/utils/shutdown");
 
-// Services
-const startInventory = require("./services/inventoryService");
-const startPayment = require("./services/paymentService");
-const startShipping = require("./services/shippingService");
-
-// Reusable Shutdown Manager Utility
-const { registerServer, registerConsumer } = require("./utils/shutdown");
+// Bring in your Topic Creation Function and Services
+const { createTopics } = require("./shared/kafka/createTopics");
+const startInventory = require("./services/inventory-service");
+const startPayment = require("./services/payment-service");
+const startShipping = require("./services/shipping-service");
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
-
-// Inject routes
 app.use(orderRoutes);
 
-// 1. Start HTTP Server and capture running instance
 const server = app.listen(3001, () => {
     console.log("Monolithic Core Server running on port 3001");
 });
-
-// Register server reference for clean shutdown
 registerServer(server);
 
-// 2. Initialize and register long-running background asynchronous Kafka worker engines
+// Securely orchestrate the startup sequence
 async function bootstrapWorkers() {
     try {
-        console.log("Initializing microservice consumption workers...");
+        console.log("Step 1: Synchronizing Kafka cluster topics...");
+        // This blocks consumers from starting until topics are verified/created on the broker
+        await createTopics(); 
+
+        console.log("Step 2: Initializing microservice consumption workers...");
 
         const inventoryConsumer = await startInventory();
         registerConsumer(inventoryConsumer, "Inventory Service");
@@ -42,7 +40,7 @@ async function bootstrapWorkers() {
         const shippingConsumer = await startShipping();
         registerConsumer(shippingConsumer, "Shipping Service");
 
-        console.log("All background pipeline microservices activated.");
+        console.log("All background pipeline microservices activated safely.");
     } catch (err) {
         console.error("Core initialization sequence crashed:", err);
         process.exit(1);
