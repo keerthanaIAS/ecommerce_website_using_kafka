@@ -2,7 +2,19 @@ const { Kafka } = require("kafkajs");
 
 const kafka = new Kafka({
     clientId: "admin-client",
-    brokers: ["localhost:9092"]
+    brokers: [
+        "192.168.1.21:9092", // ip wise check
+    ],
+    ssl: false,
+    sasl: {                  // sasl username and password
+        mechanism: "plain",
+        username: "keerthana",
+        password: "Tara@123"
+    },
+    retry: {
+        initialRetryTime: 100,
+        retries: 8
+    }
 });
 
 const topics = [
@@ -19,7 +31,7 @@ const topics = [
 async function createTopics() {
     const admin = kafka.admin();
     await admin.connect();
-    await admin.createTopics({ 
+    await admin.createTopics({
         topics,
         waitForLeaders: true // Forces the code to wait until partitions are fully hosted
     });

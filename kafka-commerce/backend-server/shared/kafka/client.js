@@ -2,11 +2,15 @@ const { Kafka } = require("kafkajs");
 
 module.exports = new Kafka({
     clientId: "commerce-app",
-      brokers: [
-        "localhost:9092",
-        "localhost:9093",
-        "localhost:9094"
+    brokers: [
+        "192.168.1.21:9092",     // ip wise check - localhost to ip
     ],
+    ssl: false,
+    sasl: {
+        mechanism: "plain",
+        username: "keerthana",
+        password: "Tara@123"
+    },
     retry: {
         initialRetryTime: 100,
         retries: 8
